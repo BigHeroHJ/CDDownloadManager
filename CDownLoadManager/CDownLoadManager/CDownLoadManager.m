@@ -41,7 +41,7 @@ static  NSString * cachesFolder() {
 
 
 static NSString *allReceiptDictSavePath() {
-    return [cachesFolder() stringByAppendingPathComponent:@"receipt.plist"];
+    return [cachesFolder() stringByAppendingPathComponent:@"receipt.data"];
 }
 
 @interface CDownLoadManager()<NSURLSessionDataDelegate,NSURLSessionDelegate>
@@ -70,15 +70,15 @@ static NSString *allReceiptDictSavePath() {
         
     NSMutableDictionary *dict = [self unArchiveAllReceiptDict];
         
+//        for(int i = 0;i < dict.allKeys.count;i++){
+//            CDownLoadReceipItem *item = [dict objectForKey:dict.allKeys[i]];;
+//            NSLog(@" self.allreceipt归档中取出的接收的数据量 %lld -- %lld --%@--%@--%ld",item.receiptBytes,item.totalBytes,item.url,item.fileName,item.status);
+//        }
+    if (dict.allKeys.count != 0 ) {
         for(int i = 0;i < dict.allKeys.count;i++){
             CDownLoadReceipItem *item = [dict objectForKey:dict.allKeys[i]];;
             NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
         }
-    if (dict.allKeys.count != 0 ) {
-//        for(int i = 0;i < dict.allKeys.count;i++){
-//            CDownLoadReceipItem *item = [dict objectForKey:dict.allKeys[i]];;
-//            NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
-//        }
         _allDownloadReceipts = [dict mutableCopy];
     }else{
         _allDownloadReceipts = [NSMutableDictionary dictionary];
@@ -313,6 +313,7 @@ static NSString *allReceiptDictSavePath() {
     //保存一下状态到归档
     [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
     [self unArchiveAllReceiptDict];
+    
     return receipteIte;
 }
 #pragma mark --NSUrlSessionDataDelegate
@@ -409,21 +410,23 @@ static NSString *allReceiptDictSavePath() {
     for (int i = 0; i< allReceipteDict.allKeys.count; i++) {
         NSString *key = allReceipteDict.allKeys[i];
         CDownLoadReceipItem *item = [allReceipteDict objectForKey:key];
-        NSLog(@"归档的时候 打印 每个item接收的数据量 -- %lld key---%@",item.totalBytes,key);
+        NSLog(@"归档的时候 打印 每个item接收的数据量 -- %lld %lld  key---%@ --存储地址%@",item.totalBytes,item.receiptBytes,key,item.filePath);
     }
-//    [NSKeyedArchiver archiveRootObject:allReceipteDict toFile:allReceiptDictSavePath()];
+    [NSKeyedArchiver archiveRootObject:allReceipteDict toFile:allReceiptDictSavePath()];
     
-    [self.allDownloadReceipts writeToFile:allReceiptDictSavePath() atomically:YES];
+//    [self.allDownloadReceipts writeToFile:allReceiptDictSavePath() atomically:YES];
+//    [[NSUserDefaults standardUserDefaults] setObject:self.allDownloadReceipts forKey:@"dict"];
 }
 
 - (NSMutableDictionary *)unArchiveAllReceiptDict
 {
-//    NSMutableDictionary *dict = [NSKeyedUnarchiver unarchiveObjectWithFile:allReceiptDictSavePath()];
-    NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:allReceiptDictSavePath()];
+    NSMutableDictionary *dict = [[NSKeyedUnarchiver unarchiveObjectWithFile:allReceiptDictSavePath()] mutableCopy];
+//    NSMutableDictionary *dict = [[NSMutableDictionary dictionaryWithContentsOfFile:allReceiptDictSavePath()] mutableCopy];
+//    NSMutableDictionary *dict = [[NSUserDefaults standardUserDefaults] objectForKey:@"dict"];
     for (int i = 0; i< dict.allKeys.count; i++) {
         NSString *key = dict.allKeys[i];
         CDownLoadReceipItem *item = [dict objectForKey:key];
-       NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
+       NSLog(@" 归档中取出的接收的数据量 %lld --%lld--%@--%@--%ld--存储地址%@",item.receiptBytes,item.totalBytes,item.url,item.fileName,item.status,item.filePath);
     }
     return dict;
 }

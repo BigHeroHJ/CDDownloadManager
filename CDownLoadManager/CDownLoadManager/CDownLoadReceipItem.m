@@ -64,8 +64,13 @@ static unsigned long long fileSizeForPath(NSString *path) {
 #pragma mark --lazyload filePath
 - (NSString *)filePath
 {
+    //程序每次运行的Users/UName/library/developer/coreSimulator/device/5C70CA86-B96A-4444-9A68-0717E100C3B5/data/container/Data/Application/2F3BBF8D-558A-45CE-8931-AE04E1E6E735/Documents/CDownloadCache/ed77757502bff623f03835ef6b2f39b9.mp4  其中Application 下的文件夹会发生变化2F3BBF8D-558A-45CE-8931-AE04E1E6E735
     NSString *path = [cachesFolder() stringByAppendingPathComponent:self.fileName];
-    if (_filePath == nil) {
+    if (![path isEqualToString:_filePath]) {//新获取的路径 不是之前保存的路径的话
+        if(_filePath && ![[NSFileManager defaultManager] fileExistsAtPath:_filePath]){
+            NSString *dir = [_filePath stringByDeletingLastPathComponent];
+        [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+        }
         _filePath = path;
     }
     return _filePath;
@@ -73,6 +78,8 @@ static unsigned long long fileSizeForPath(NSString *path) {
 
 - (long long)receiptBytes
 {
+    
+    NSLog(@"计算已接收的数据量%lld",fileSizeForPath(self.filePath));
     return fileSizeForPath(self.filePath);
 }
 
@@ -124,8 +131,11 @@ static unsigned long long fileSizeForPath(NSString *path) {
     [aCoder encodeObject:self.filePath forKey:@"filePath"];
     [aCoder encodeInteger:self.status forKey:@"status"];
     [aCoder encodeObject:self.fileName forKey:@"fileName"];
-    [aCoder encodeInteger:self.receiptBytes forKey:@"receiptBytes"];
-    [aCoder encodeInteger:self.totalBytes forKey:@"totalBytes"];
+    
+    [aCoder encodeObject:@(self.receiptBytes) forKey:@"receiptBytes"];
+    [aCoder encodeObject:@(self.totalBytes) forKey:@"totalBytes"];
+//    [aCoder encodeInteger:self.receiptBytes forKey:@"receiptBytes"];
+//    [aCoder encodeInteger:self.totalBytes forKey:@"totalBytes"];
   
 }
 
@@ -144,8 +154,11 @@ static unsigned long long fileSizeForPath(NSString *path) {
         self.filePath = [aDecoder decodeObjectForKey:@"filePath"];
         self.status = [aDecoder decodeIntegerForKey:@"status"];
         self.fileName = [aDecoder decodeObjectForKey:@"fileName"];
-        self.receiptBytes = [aDecoder decodeIntegerForKey:@"receiptBytes"];
-        self.totalBytes = [aDecoder decodeIntegerForKey:@"totalBytes"];
+//        self.receiptBytes = [aDecoder decodeIntegerForKey:@"receiptBytes"];
+//        self.totalBytes = [aDecoder decodeIntegerForKey:@"totalBytes"];
+        
+        self.receiptBytes = [[aDecoder decodeObjectForKey:@"receiptBytes"] longLongValue];
+        self.totalBytes = [[aDecoder decodeObjectForKey:@"totalBytes"] longLongValue];
         
     }
     return self;

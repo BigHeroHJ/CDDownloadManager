@@ -6,11 +6,43 @@
 //  Copyright © 2016年 Lemon HOLL. All rights reserved.
 //
 
+
+
+
 #import "CDownLoadManager.h"
 
 #import "CDownLoadReceipItem.h"
 #import "MD5String.h"
 #import "AFNetworking.h"
+
+
+static NSString *const CDownloadCachesFolderName = @"CDownloadCache";
+
+//在library 路径下新建一个CDownloadCache 的文件夹 每个文件存储在这个文件夹内部
+static  NSString * cachesFolder() {
+    NSFileManager *filem = [NSFileManager defaultManager];
+    static NSString *cachesFolder ;
+    static dispatch_once_t oncetoken;
+    dispatch_once(&oncetoken, ^{
+        if (cachesFolder == nil) {
+            NSString *cachesDir = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+            cachesFolder = [cachesDir stringByAppendingPathComponent:CDownloadCachesFolderName];
+        }
+        
+        NSError *error = nil;
+        
+        if (![filem createDirectoryAtPath:cachesFolder withIntermediateDirectories:YES attributes:nil error:&error]) {
+            NSLog(@"failed to creat new directory at %@", cachesFolder);
+            cachesFolder = nil;
+        }
+    });
+    return cachesFolder;
+}
+
+
+static NSString *allReceiptDictSavePath() {
+    return [cachesFolder() stringByAppendingPathComponent:@"receipt.plist"];
+}
 
 @interface CDownLoadManager()<NSURLSessionDataDelegate,NSURLSessionDelegate>
 
@@ -20,12 +52,12 @@
 @property (nonatomic, strong) dispatch_queue_t synchromizationQueue;//这个Manager 进行所有任务下载操作的队列
 
 @property (nonatomic, assign) NSInteger maxNumActiveDownloads;//最大活跃的下载数。 未实现
-@property (nonatomic, assign) NSUInteger activeReqestCount;
+@property (nonatomic, assign) NSUInteger activeReqestCount;//当前在请求的request数量
 
 @property (nonatomic, strong) NSMutableArray *queuedTasks;
-@property (nonatomic, strong) NSMutableDictionary *tasks;
+@property (nonatomic, strong) NSMutableDictionary *tasks;//任务task 和 对应的url 的键值对
 
-@property (nonatomic, strong) NSMutableDictionary *allDownloadReceipts;
+@property (nonatomic, strong) NSMutableDictionary *allDownloadReceipts;//所有的正在下载的item 也是对应的url 键值对
 
 @end
 
@@ -35,9 +67,24 @@
 - (NSMutableDictionary *)allDownloadReceipts
 {
     if (_allDownloadReceipts == nil) {
+        
+    NSMutableDictionary *dict = [self unArchiveAllReceiptDict];
+        
+        for(int i = 0;i < dict.allKeys.count;i++){
+            CDownLoadReceipItem *item = [dict objectForKey:dict.allKeys[i]];;
+            NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
+        }
+    if (dict.allKeys.count != 0 ) {
+//        for(int i = 0;i < dict.allKeys.count;i++){
+//            CDownLoadReceipItem *item = [dict objectForKey:dict.allKeys[i]];;
+//            NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
+//        }
+        _allDownloadReceipts = [dict mutableCopy];
+    }else{
         _allDownloadReceipts = [NSMutableDictionary dictionary];
+        [self saveArvhiceAllReceiptDict:_allDownloadReceipts];
     }
-    
+   }
     return _allDownloadReceipts;
 }
 
@@ -62,7 +109,7 @@
     configuration.HTTPShouldUsePipelining = NO;
     configuration.requestCachePolicy = NSURLRequestUseProtocolCachePolicy;
     configuration.allowsCellularAccess = YES;
-    configuration.timeoutIntervalForRequest = 10.0;
+    configuration.timeoutIntervalForRequest = 10.0;//请求超时的时间
     configuration.HTTPMaximumConnectionsPerHost = 10;
     return configuration;
 }
@@ -110,7 +157,8 @@
    __block CDownLoadReceipItem *downloadItem = [self prepareDownloadReceiptForUrl:url];//根据url 查找或创建一个receiptItem
 
     //开启一个队列去下载
-    dispatch_sync(self.synchromizationQueue, ^{
+    __unsafe_unretained CDownLoadManager *weakSelf = self;
+    dispatch_sync(weakSelf.synchromizationQueue, ^{
         NSString *urlStr = url;
         
         if (urlStr == nil) {
@@ -148,9 +196,9 @@
             return;
         }
  
-        NSURLSessionDataTask *task = self.tasks[downloadItem.url];
+        NSURLSessionDataTask *task = weakSelf.tasks[downloadItem.url];
         // 当请求暂停一段时间后。task的状态会变化为 NSURLSessionTaskStateCompleted ，会出现请求超时downloadFailed 这个状态这时候需要根据已有的totalBytes 设置range 重新开启一个请求 设置新的task 。所有要判断下状态
-        NSLog(@"task 的state 变化 %ld",task.state);
+//        NSLog(@"task 的state 变化 %ld",task.state);
         if (!task || ((task.state != NSURLSessionTaskStateRunning) && (task.state != NSURLSessionTaskStateSuspended))) { //首次下载 是从这里开始
             NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:downloadItem.url]];
             
@@ -160,22 +208,18 @@
             [request setValue:range forHTTPHeaderField:@"Range"];
             
             
-            NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request];
+            NSURLSessionDataTask *task = [weakSelf.session dataTaskWithRequest:request];
             task.taskDescription = downloadItem.url;//后面再dataDelegate 的方法通过task 直接获取 url 可以在字典中获取对应的receiptItem
     
-            self.tasks[downloadItem.url] = task;
+//            NSLog(@"downloadItem.url is --->,%@",downloadItem.url);
+//            self.tasks[downloadItem.url] = task;
+            [weakSelf.tasks setObject:task forKey:downloadItem.url];
             
-            NSLog(@"url is %@,task is %@",downloadItem.url,task);
-            [self.queuedTasks addObject:task];
-           
-            
+//            NSLog(@"url is %@,task is %@",downloadItem.url,task);
+            [weakSelf.queuedTasks addObject:task];
+        
         }
-            [self resumeTaskWithRecepit:downloadItem];
-    
-        
-        
-        
-
+            [weakSelf resumeTaskWithRecepit:downloadItem];
     });
     
     return downloadItem;
@@ -185,31 +229,33 @@
 - (CDownLoadReceipItem *)prepareDownloadReceiptForUrl:(NSString *)url
 {
     if (url == nil) {
-        NSLog(@"url is NULL");
+//        NSLog(@"url is NULL");
         return nil;
     }
     
     //从所有的url字典中根据url键值查找对于的item
     CDownLoadReceipItem *item = self.allDownloadReceipts[url];
     
-    NSLog(@"所有receiptItem 个数 -->%ld",self.allDownloadReceipts.count);
+//    NSLog(@"所有receiptItem 个数 -->%ld",self.allDownloadReceipts.count);
     //如果字典中存在 则返回，否则创建新的receiptItem
     if (item ) {
-        NSLog(@"item数组中 含有已经存在的 receipteItem");
+//        NSLog(@"item.receiptBytes is %lld",item.receiptBytes);
         return item;
     }else{
-        NSLog(@"--item数组中 不含有已经存在的 receipteItem--");
-
         item = [[CDownLoadReceipItem alloc] initWithUrl:url];
         item.status = CDownLoadReceipItemNone;//初始化item 状态为NONE
-        item.totalBytes = 1;
+        item.totalBytes = 0;
         item.receiptBytes = 0;
+        item.url = url;
         dispatch_sync(self.synchromizationQueue, ^{
             [self.allDownloadReceipts setObject:item forKey:url];//保存到字典
-//            //归档存储一下
-//            [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
+            //归档存储一下
+            [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
         });
+//         NSLog(@"item.progress is %lld",item.progress.completedUnitCount);
     }
+    
+   
     return item;
     
 }
@@ -239,7 +285,7 @@
 //继续一个下载任务
 - (void)resumeTaskWithRecepit:(CDownLoadReceipItem *)receiptItem
 {
-    NSLog(@"状态是什么  %ld",receiptItem.status);
+//    NSLog(@"状态是什么  %ld",receiptItem.status);
 //    if(receiptItem.status == CDownLoadReceipItemStatusSuspened || receiptItem.status == CDownLoadReceipItemFailed){
         //获取这个receipt对应的task
         NSURLSessionTask *task = self.tasks[receiptItem.url];
@@ -264,6 +310,9 @@
     CDownLoadReceipItem *receipteIte = [self prepareDownloadReceiptForUrl:url];
     receipteIte.status = status;
     
+    //保存一下状态到归档
+    [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
+    [self unArchiveAllReceiptDict];
     return receipteIte;
 }
 #pragma mark --NSUrlSessionDataDelegate
@@ -271,10 +320,12 @@
 {
     NSString *itemUrl = dataTask.taskDescription;
     CDownLoadReceipItem *receiptItem = self.allDownloadReceipts[itemUrl];
-    receiptItem.totalBytes = receiptItem.totalBytes + dataTask.countOfBytesExpectedToReceive;
+    receiptItem.totalBytes = receiptItem.receiptBytes + dataTask.countOfBytesExpectedToReceive;//这个是每次请求task 的总数据是已写的数据加上这次 预计接收的数据量，有暂停时间过久重新请求task 。
     receiptItem.status = CDownLoadReceipItemStatusDownloading;
     
     completionHandler(NSURLSessionResponseAllow);
+    
+     [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
 }
 
 - (void)URLSession:(NSURLSession *)session dataTask:(NSURLSessionDataTask *)dataTask didReceiveData:(NSData *)data
@@ -316,6 +367,7 @@
         receiptItem.progress.totalUnitCount = receiptItem.totalBytes;
         receiptItem.progress.completedUnitCount = receiptItem.receiptBytes;
         
+        NSLog(@"总共的data-->%lld , 接收的data--%lldd",receiptItem.totalBytes,receiptItem.receiptBytes);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (receiptItem.progressBlock) {
                 receiptItem.progressBlock(receiptItem.progress,receiptItem);
@@ -345,11 +397,35 @@
         });
     }
     
+    [self saveArvhiceAllReceiptDict:self.allDownloadReceipts];
     //打印一下 接收的文件的路径
     NSLog(@"save path is %@",item.filePath);
 }
+
+#pragma mark -- 给对象进行归档  & 解归档
+
 - (void)saveArvhiceAllReceiptDict:(NSMutableDictionary *)allReceipteDict
 {
-//    [NSKeyedArchiver ]
+    for (int i = 0; i< allReceipteDict.allKeys.count; i++) {
+        NSString *key = allReceipteDict.allKeys[i];
+        CDownLoadReceipItem *item = [allReceipteDict objectForKey:key];
+        NSLog(@"归档的时候 打印 每个item接收的数据量 -- %lld key---%@",item.totalBytes,key);
+    }
+//    [NSKeyedArchiver archiveRootObject:allReceipteDict toFile:allReceiptDictSavePath()];
+    
+    [self.allDownloadReceipts writeToFile:allReceiptDictSavePath() atomically:YES];
 }
+
+- (NSMutableDictionary *)unArchiveAllReceiptDict
+{
+//    NSMutableDictionary *dict = [NSKeyedUnarchiver unarchiveObjectWithFile:allReceiptDictSavePath()];
+    NSMutableDictionary *dict = [NSMutableDictionary dictionaryWithContentsOfFile:allReceiptDictSavePath()];
+    for (int i = 0; i< dict.allKeys.count; i++) {
+        NSString *key = dict.allKeys[i];
+        CDownLoadReceipItem *item = [dict objectForKey:key];
+       NSLog(@" 归档中取出的接收的数据量 %lld--%@--%@--%ld",item.receiptBytes,item.url,item.fileName,item.status);
+    }
+    return dict;
+}
+
 @end

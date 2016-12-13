@@ -60,7 +60,7 @@
     _url = url;
     self.titleLabel.text = url.lastPathComponent;
     CDownLoadReceipItem *recepitItem = [[CDownLoadManager shareInstance] prepareDownloadReceiptForUrl:url];
-    
+    NSLog(@"recepiteItem.progress.fractionCompleted %lf",recepitItem.progress.fractionCompleted);
     self.progress.progress = recepitItem.progress.fractionCompleted;
     self.receiptItem = recepitItem;
     

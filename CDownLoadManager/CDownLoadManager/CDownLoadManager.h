@@ -35,7 +35,7 @@ typedef enum : NSUInteger {
 - (instancetype)initWithSession:(NSURLSession *)session downloadPrioritization:(CDownLoadManagerPrioritize)downloadPrioritization maximumActiveDownloads:(NSInteger)maximumActiveDownloads;
 
 
-//类似af 中的downloadTask 方法
+//类似af 中的downloadTask
 - (CDownLoadReceipItem *)downloadFileWithUrl:(NSString * _Nullable )url
                                     progress:(void (^)(NSProgress * downloadProgress, CDownLoadReceipItem *receiptItem)) progressBlcok
                                     destinationPath:(NSURL * (^)(NSURL *targetPath,NSURLResponse *response))destinationBlock
